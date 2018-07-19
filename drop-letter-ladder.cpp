@@ -18,7 +18,19 @@ std::vector<std::string> allDrops(const std::string& s)
   return ret;
 };
 
+struct wordGraphNode {
+  wordGraphNode( const std::string s ) : word(std::move(s)) {} ;
 
+  const std::string word;
+  std::vector< const wordGraphNode* > inEdges, outEdges;
+
+  bool isRoot() const noexcept { return inEdges.empty(); };
+  bool isLeaf() const noexcept { return outEdges.empty(); };
+};
+
+struct wordForestOfTrees {
+  std::vector< wordGraphNode > words;
+};
 
 int main(int argc, char* argv[]) {
   try {
@@ -53,7 +65,7 @@ int main(int argc, char* argv[]) {
     };
 
     // Go through the dictionary file in one pass
-    
+
     std::vector<std::string> dict;
     std::string line;
 
@@ -77,7 +89,7 @@ int main(int argc, char* argv[]) {
 
     dict.resize( distance(dict.begin(), it) );
     };
-    
+
     ////////////////////////////////////////////////////////
 
     // Brute force approach, find all the drop-pairs
