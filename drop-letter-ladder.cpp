@@ -21,15 +21,37 @@ std::vector<std::string> allDrops(const std::string& s)
 struct wordGraphNode {
   wordGraphNode( const std::string s ) : word(std::move(s)) {} ;
 
-  const std::string word;
+  std::string word;
   std::vector< const wordGraphNode* > inEdges, outEdges;
 
   bool isRoot() const noexcept { return inEdges.empty(); };
   bool isLeaf() const noexcept { return outEdges.empty(); };
 };
 
-struct wordForestOfTrees {
-  std::vector< wordGraphNode > words;
+struct wordForestOfTrees
+  : public std::vector< wordGraphNode >
+{
+  std::vector< const wordGraphNode * > roots() const
+  {
+    std::vector< const wordGraphNode * > ret;
+
+    for ( auto word = begin(); word < end(); word++)
+      if (word->isRoot())
+        ret.push_back(&*word);
+
+    return ret;
+  };
+
+  std::vector< const wordGraphNode * > nonTrivRoots() const
+  {
+    std::vector< const wordGraphNode * > ret;
+
+    for ( auto word = begin(); word < end(); word++)
+      if (word->isRoot() && !(word->isLeaf()))
+        ret.push_back(&*word);
+
+    return ret;
+  };
 };
 
 int main(int argc, char* argv[]) {
@@ -67,6 +89,7 @@ int main(int argc, char* argv[]) {
     // Go through the dictionary file in one pass
 
     std::vector<std::string> dict;
+    wordForestOfTrees dict2;
     std::string line;
 
     while (std::getline(dictFile, line)) {
@@ -75,6 +98,7 @@ int main(int argc, char* argv[]) {
                      line.begin(), tolower);
 
       dict.push_back(line);
+      dict2.push_back(line);
 
     }
 
@@ -83,12 +107,31 @@ int main(int argc, char* argv[]) {
 
     // Make sure it's sorted and unique
     sort(dict.begin(), dict.end());
+    sort(dict2.begin(), dict2.end(),
+         [](const wordGraphNode & a , const wordGraphNode & b) {
+           return a.word < b.word;
+         });
+
+    std::cout << "Length " << dict2.size() << std::endl;
 
     {
-    auto it = unique(dict.begin(), dict.end());
+    auto last = unique(dict.begin(), dict.end());
 
-    dict.resize( distance(dict.begin(), it) );
+    dict.erase( last, dict.end() );
     };
+
+    std::cout << "Length " << dict.size() << std::endl;
+
+    {
+    auto last = unique(dict2.begin(), dict2.end(),
+                       [](const wordGraphNode & a , const wordGraphNode & b) {
+                         return a.word == b.word;
+                       });
+
+    dict2.erase( last, dict2.end() );
+    };
+
+    std::cout << "Length " << dict2.size() << std::endl;
 
     ////////////////////////////////////////////////////////
 
@@ -109,11 +152,37 @@ int main(int argc, char* argv[]) {
 
     std::cout << "Length " << dropPairs.size() << std::endl;
 
-    return 0;
+    ////////////////////////////////////////////////////////
 
-    for (auto p : dropPairs ) {
-      std::cout << *(std::get<0>(p)) << "->" << *(std::get<1>(p)) << std::endl;
+    // Brute force approach, find all the drop-pairs
+
+    for ( auto it = dict2.begin(); it < dict2.end(); it++ ) {
+      auto wordDrops = allDrops(it->word);
+
+      for (auto d : wordDrops) {
+        auto bounds = equal_range(dict2.begin(), dict2.end(), d,
+                                  [](const wordGraphNode & a,
+                                     const wordGraphNode & b) {
+                                    return a.word < b.word;
+                                  });
+        if (bounds.second > bounds.first) {
+          it->outEdges.push_back(&*bounds.first);
+          bounds.first->inEdges.push_back(&*it);
+        };
+      };
     };
+
+    ////////////////////////////////////////////////////////
+
+    auto roots = dict2.nonTrivRoots();
+
+    std::cout << roots.size() << std::endl;
+
+    for ( auto root : roots ) {
+      std::cout << root->word << std::endl;
+    };
+
+    return 0;
 
     ////////////////////////////////////////////////////////
 
