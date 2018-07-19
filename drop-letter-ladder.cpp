@@ -97,12 +97,15 @@ int main(int argc, char* argv[]) {
   try {
 
     std::string dictPath;
+    size_t nMin;
 
     cxxopts::Options options(argv[0], "Find ladders of words formed by letter-dropping");
 
     options.add_options()
       ("d,dict", "Dictionary file path", cxxopts::value<std::string>(dictPath)
        ->default_value("/usr/share/dict/words"), "FILE")
+      ("n,nmin", "Minimum chain length", cxxopts::value<size_t>(nMin)
+       ->default_value("4"), "N")
       ("help", "Print this help message")
       ;
 
@@ -202,6 +205,7 @@ int main(int argc, char* argv[]) {
     };
 
     std::cout << completed.size() << " chains" << std::endl;
+    std::cout << "only printing those of length >=" << nMin << std::endl;
 
     ////////////////////////////////////////////////////////
     // Sort by length of chain
@@ -210,15 +214,10 @@ int main(int argc, char* argv[]) {
                []( const wordChain & a, const wordChain & b ) {
                  return a.size() > b.size();
                });
-
-    for ( auto chain : completed )
-      std::cout << chain << std::endl;
-
-    // for ( auto root : roots ) {
-    //   std::cout << *root << " " << *(root->outEdges[0]) << std::endl;
-    // };
-
-    return 0;
+    for ( auto it = completed.begin();
+          (it < completed.end()) && (it->size() >= nMin) ;
+          it++ )
+      std::cout << *it << std::endl;
 
     ////////////////////////////////////////////////////////
 
