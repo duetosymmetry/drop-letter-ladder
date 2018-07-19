@@ -2,6 +2,9 @@
 #include <fstream>
 
 #include <cctype>
+
+#include <stack>
+
 #include <algorithm>
 
 #include "cxxopts.hpp"
@@ -18,14 +21,50 @@ std::vector<std::string> allDrops(const std::string& s)
   return ret;
 };
 
-struct wordGraphNode {
-  wordGraphNode( const std::string s ) : word(std::move(s)) {} ;
+struct wordGraphNode
+  : public std::string
+{
 
-  std::string word;
   std::vector< const wordGraphNode* > inEdges, outEdges;
 
   bool isRoot() const noexcept { return inEdges.empty(); };
   bool isLeaf() const noexcept { return outEdges.empty(); };
+};
+
+struct wordChain
+  : public std::vector< const wordGraphNode * >
+{
+  bool complete() const { return (*(end()-1))->isLeaf(); };
+  bool incomplete() const { return !complete(); };
+
+  std::vector< wordChain > singleWordExtensions() const {
+    std::vector< wordChain > ret;
+
+    if (complete()) return ret;
+
+    auto lastWord = *(end()-1);
+
+    for ( auto newLastWord : lastWord->outEdges ) {
+      wordChain myCopy(*this);
+      // std::copy(begin(), end(), myCopy.begin());
+      myCopy.push_back(newLastWord);
+      ret.push_back(myCopy);
+    };
+
+    return ret;
+
+  };
+};
+
+std::ostream & operator<<(std::ostream &os, const wordChain & chain)
+{
+  for (auto it = chain.begin(); it < chain.end(); it++) {
+    os << **it;
+    if (it != chain.end()-1)
+      os << "->";
+  };
+
+  return os;
 };
 
 struct wordForestOfTrees
@@ -75,8 +114,8 @@ int main(int argc, char* argv[]) {
     }
 
     ////////////////////////////////////////////////////////
-    
     // Open dictionary file
+
     std::ifstream dictFile;
 
     dictFile.open(dictPath);
@@ -88,8 +127,7 @@ int main(int argc, char* argv[]) {
 
     // Go through the dictionary file in one pass
 
-    std::vector<std::string> dict;
-    wordForestOfTrees dict2;
+    wordForestOfTrees dict;
     std::string line;
 
     while (std::getline(dictFile, line)) {
@@ -97,8 +135,7 @@ int main(int argc, char* argv[]) {
       std::transform(line.begin(), line.end(),
                      line.begin(), tolower);
 
-      dict.push_back(line);
-      dict2.push_back(line);
+      dict.push_back(wordGraphNode{line});
 
     }
 
@@ -107,12 +144,8 @@ int main(int argc, char* argv[]) {
 
     // Make sure it's sorted and unique
     sort(dict.begin(), dict.end());
-    sort(dict2.begin(), dict2.end(),
-         [](const wordGraphNode & a , const wordGraphNode & b) {
-           return a.word < b.word;
-         });
 
-    std::cout << "Length " << dict2.size() << std::endl;
+    // std::cout << "Length " << dict.size() << std::endl;
 
     {
     auto last = unique(dict.begin(), dict.end());
@@ -120,51 +153,16 @@ int main(int argc, char* argv[]) {
     dict.erase( last, dict.end() );
     };
 
-    std::cout << "Length " << dict.size() << std::endl;
-
-    {
-    auto last = unique(dict2.begin(), dict2.end(),
-                       [](const wordGraphNode & a , const wordGraphNode & b) {
-                         return a.word == b.word;
-                       });
-
-    dict2.erase( last, dict2.end() );
-    };
-
-    std::cout << "Length " << dict2.size() << std::endl;
+    // std::cout << "Length " << dict.size() << std::endl;
 
     ////////////////////////////////////////////////////////
-
     // Brute force approach, find all the drop-pairs
-
-    std::vector< std::tuple< decltype(dict)::iterator,
-                             decltype(dict)::iterator > > dropPairs;
 
     for ( auto it = dict.begin(); it < dict.end(); it++ ) {
       auto wordDrops = allDrops(*it);
 
       for (auto d : wordDrops) {
         auto bounds = equal_range(dict.begin(), dict.end(), d);
-        if (bounds.second > bounds.first)
-          dropPairs.push_back( make_tuple(it, bounds.first) );
-      };
-    };
-
-    std::cout << "Length " << dropPairs.size() << std::endl;
-
-    ////////////////////////////////////////////////////////
-
-    // Brute force approach, find all the drop-pairs
-
-    for ( auto it = dict2.begin(); it < dict2.end(); it++ ) {
-      auto wordDrops = allDrops(it->word);
-
-      for (auto d : wordDrops) {
-        auto bounds = equal_range(dict2.begin(), dict2.end(), d,
-                                  [](const wordGraphNode & a,
-                                     const wordGraphNode & b) {
-                                    return a.word < b.word;
-                                  });
         if (bounds.second > bounds.first) {
           it->outEdges.push_back(&*bounds.first);
           bounds.first->inEdges.push_back(&*it);
@@ -173,14 +171,52 @@ int main(int argc, char* argv[]) {
     };
 
     ////////////////////////////////////////////////////////
+    // Do a depth-first search to collect all the word-chains. Use a stack.
 
-    auto roots = dict2.nonTrivRoots();
+    std::vector< wordChain > completed;
+    std::stack< wordChain > incompleted;
 
-    std::cout << roots.size() << std::endl;
+    auto roots = dict.nonTrivRoots();
 
     for ( auto root : roots ) {
-      std::cout << root->word << std::endl;
+      wordChain newChain;
+      newChain.push_back(root);
+      incompleted.push(newChain);
+    }
+
+    while (!incompleted.empty()) {
+      auto chain = incompleted.top();
+      incompleted.pop();
+
+      // std::cout << "popped " << chain << std::endl;
+
+      if (chain.complete()) {
+        completed.push_back(chain);
+      } else {
+        auto extensions = chain.singleWordExtensions();
+        for ( auto extension : extensions ) {
+          // std::cout << "pushing " << extension << std::endl;
+          incompleted.push(extension);
+        };
+      };
     };
+
+    std::cout << completed.size() << " chains" << std::endl;
+
+    ////////////////////////////////////////////////////////
+    // Sort by length of chain
+
+    std::sort( completed.begin(), completed.end(),
+               []( const wordChain & a, const wordChain & b ) {
+                 return a.size() > b.size();
+               });
+
+    for ( auto chain : completed )
+      std::cout << chain << std::endl;
+
+    // for ( auto root : roots ) {
+    //   std::cout << *root << " " << *(root->outEdges[0]) << std::endl;
+    // };
 
     return 0;
 
